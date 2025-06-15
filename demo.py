@@ -4,6 +4,9 @@ import sys
 from bleak import BleakScanner, BleakClient
 from bleak.uuids import normalize_uuid_16
 from bleak.backends.device import BLEDevice
+from bleak.backends.bluezdbus.service import BleakGATTServiceBlueZDBus
+from bleak.backends.bluezdbus.characteristic import BleakGATTCharacteristicBlueZDBus
+from bleak.backends.bluezdbus.descriptor import BleakGATTDescriptorBlueZDBus
 
 from uplift import Desk, discover
 
@@ -12,7 +15,6 @@ primary_service_uuid_for_discovery  = normalize_uuid_16(0xfe60)
 timeout = 10.0
 
 def print_command_options():
-
     print("Commands:")
     print("    h - print this help message")
     print("    u - move_to_standing")
@@ -20,6 +22,28 @@ def print_command_options():
     print("    r - press_raise")
     print("    l - press_lower")
     print("    e - exit")
+    print("    v - dump debug info")
+
+def get_gatt_service_string(service: BleakGATTServiceBlueZDBus) -> str:
+    return f"{service.uuid} - {service.description}"
+
+async def get_gatt_characteristic_string(characteristic: BleakGATTCharacteristicBlueZDBus, bleak_client: BleakClient) -> str:
+    value: str = await bleak_client.read_gatt_char(characteristic.uuid)
+    return f"{characteristic.uuid} - {characteristic.description} - ({', '.join(characteristic.properties)}): {value}"
+
+def get_gatt_descriptor_string(descriptor: BleakGATTDescriptorBlueZDBus) -> str:
+    return f"{descriptor.uuid} - {descriptor.description}"
+
+async def dump_client_info(bleak_client: BleakClient):
+    print(f"Address: {bleak_client.address}")
+
+    print("Services:")
+    for service in bleak_client.services.services.values():
+        print(f"\t{get_gatt_service_string(service)}")
+        for characteristic in service.characteristics:
+            print(f"\t\t{await get_gatt_characteristic_string(characteristic, bleak_client)}")
+            for descriptor in characteristic.descriptors:
+                print(f"\t\t\t{get_gatt_descriptor_string(descriptor)}")
 
 async def async_height_notify_callback(desk: Desk):
     print(f"Received height update: {desk.height}; Moving: {desk.moving}")
@@ -75,6 +99,11 @@ async def main():
             elif (data == b"e\n"):
                 print("exit")
                 break
+            elif (data == b"v\n"):
+                await dump_client_info(bleak_client)
+            else:
+                print("Unknown command")
+                print_command_options()
 
         await desk.stop_notify()
         print(f"Height: {desk.height} in")

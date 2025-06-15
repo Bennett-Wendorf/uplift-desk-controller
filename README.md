@@ -49,6 +49,9 @@
       </ul>
     </li>
     <li><a href="#getting-started">Getting Started</a></li>
+      <ul>
+        <li><a href="#running-the-demo">Running the Demo</a></li>
+      </ul>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -78,6 +81,14 @@ This project is written in Python using the following libraries:
 
 Each of their respective licenses apply to their binaries and their use in this project. Their licenses can be found at the links above.
 
+<!-- Getting Started -->
+## Getting Started
+This project was built primarily for use in my [Home Assistant integration](https://github.com/Bennett-Wendorf/hass-uplift-desk), but you can also run it standalone. To make this easier, I created a demo application.
+
+### Running the Demo
+1. Clone the repository and open a terminal to it
+2. Execute `pipenv install` to build a virtual environment and install the dependencies
+3. Exeucte the demo with `pipenv run python demo.py`
 
 <!-- CONTRIBUTING -->
 ## Contributing

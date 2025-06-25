@@ -14,7 +14,7 @@ import time
 
 from .utils import height_conv_to_in
 
-_primary_service_uuid_for_discovery  = normalize_uuid_16(0xfe60)
+_primary_service_uuid_for_discovery  = normalize_uuid_16(0x00ff)
 
 _desk_height_uuid = normalize_uuid_16(0xfe62)
 _desk_control_uuid = normalize_uuid_16(0xfe61)

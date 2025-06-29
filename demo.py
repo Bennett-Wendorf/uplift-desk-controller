@@ -67,8 +67,8 @@ async def main():
 
         desk.register_callback(async_height_notify_callback)
 
-        await desk.start_notify()
-        await desk.read_height(bleak_client)
+#        await desk.start_notify()
+#        await desk.read_height(bleak_client)
         print(f"Height: {desk.height} in")
         
         print("Start typing and press ENTER...\n Press h for help")
@@ -105,7 +105,7 @@ async def main():
                 print("Unknown command")
                 print_command_options()
 
-        await desk.stop_notify()
+#        await desk.stop_notify()
         print(f"Height: {desk.height} in")
 
 if __name__ == "__main__":

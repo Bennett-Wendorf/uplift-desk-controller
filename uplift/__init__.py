@@ -14,10 +14,19 @@ import time
 
 from .utils import height_conv_to_in
 
-_primary_service_uuid_for_discovery  = normalize_uuid_16(0xfe60)
+# Known GATT layouts across Jiecang-based desk variants.
+# Each entry: (service, control/write characteristic, height/notify characteristic)
+_KNOWN_LAYOUTS = [
+    (normalize_uuid_16(0xfe60), normalize_uuid_16(0xfe61), normalize_uuid_16(0xfe62)),
+    (normalize_uuid_16(0xff00), normalize_uuid_16(0xff01), normalize_uuid_16(0xff02)),
+]
 
-_desk_height_uuid = normalize_uuid_16(0xfe62)
-_desk_control_uuid = normalize_uuid_16(0xfe61)
+# Advertise/discover on all known primary services.
+_primary_service_uuids_for_discovery = [layout[0] for layout in _KNOWN_LAYOUTS]
+
+# Defaults preserve original behavior until a connected client tells us otherwise.
+_desk_control_uuid = _KNOWN_LAYOUTS[0][1]
+_desk_height_uuid = _KNOWN_LAYOUTS[0][2]
 
 _wake_uuid = [0xf1, 0xf1, 0x00, 0x00, 0x00, 0x7e] # The content of this command actually doesn't seem to matter, the desk just needs to wake up
 _sit_preset_uuid = [0xf1, 0xf1, 0x05, 0x00, 0x05, 0x7e]
@@ -31,8 +40,8 @@ _scanner_timeout = 10.0
 def discover(scanner: BleakScanner = None) -> list[BLEDevice]:
     if scanner is None:
         scanner = BleakScanner()
-    
-    return scanner.discover(timeout=_scanner_timeout, service_uuids=[_primary_service_uuid_for_discovery])
+
+    return scanner.discover(timeout=_scanner_timeout, service_uuids=_primary_service_uuids_for_discovery)
 
 class Desk:
     def __init__(self, address: str, name: str, bleak_client: BleakClient = None) -> Self:
@@ -43,6 +52,7 @@ class Desk:
         self._moving = False
         self._last_heights = []
         self._height_notification_callbacks: list[callable] = []
+        self._resolved_uuids: tuple[str, str] | None = None
 
     @property
     def height(self):
@@ -56,58 +66,79 @@ class Desk:
         self._moving = value
         self._last_action_time = time.time()
 
+    def _resolve_uuids(self, client: BleakClient) -> tuple[str, str]:
+        """Pick the (control, height) UUIDs matching the layout this desk exposes."""
+        if self._resolved_uuids is not None:
+            return self._resolved_uuids
+
+        present = {s.uuid.lower() for s in client.services}
+        for service_uuid, control_uuid, height_uuid in _KNOWN_LAYOUTS:
+            if service_uuid.lower() in present:
+                self._resolved_uuids = (control_uuid, height_uuid)
+                return self._resolved_uuids
+
+        # Fall back to the original defaults if nothing matched.
+        self._resolved_uuids = (_desk_control_uuid, _desk_height_uuid)
+        return self._resolved_uuids
+
     async def move_to_standing(self, bleak_client: BleakClient = None) -> None:
         client = bleak_client or self.bleak_client
 
         if (client is None):
             raise Exception("No bleak client provided")
-        
+
         await self._awaken(client)
-        await client.write_gatt_char(_desk_control_uuid, _stand_preset_uuid, False)
+        control_uuid, _ = self._resolve_uuids(client)
+        await client.write_gatt_char(control_uuid, _stand_preset_uuid, False)
 
     async def move_to_sitting(self, bleak_client: BleakClient = None) -> None:
         client = bleak_client or self.bleak_client
 
         if (client is None):
             raise Exception("No bleak client provided")
-        
+
         await self._awaken(client)
-        await client.write_gatt_char(_desk_control_uuid, _sit_preset_uuid, False)
+        control_uuid, _ = self._resolve_uuids(client)
+        await client.write_gatt_char(control_uuid, _sit_preset_uuid, False)
 
     async def press_raise(self, bleak_client: BleakClient = None) -> None:
         client = bleak_client or self.bleak_client
 
         if (client is None):
             raise Exception("No bleak client provided")
-        
+
         await self._awaken(client)
-        await client.write_gatt_char(_desk_control_uuid, _raise_button_uuid, False)
+        control_uuid, _ = self._resolve_uuids(client)
+        await client.write_gatt_char(control_uuid, _raise_button_uuid, False)
 
     async def press_lower(self, bleak_client: BleakClient = None) -> None:
         client = bleak_client or self.bleak_client
 
         if (client is None):
             raise Exception("No bleak client provided")
-        
+
         await self._awaken(client)
-        await client.write_gatt_char(_desk_control_uuid, _lower_button_uuid, False)
+        control_uuid, _ = self._resolve_uuids(client)
+        await client.write_gatt_char(control_uuid, _lower_button_uuid, False)
 
     async def start_notify(self, bleak_client: BleakClient = None) -> None:
         client = bleak_client or self.bleak_client
 
         if (client is None):
             raise Exception("No bleak client provided")
-        
-        await client.start_notify(_desk_height_uuid, self._height_notify_callback)
+
+        _, height_uuid = self._resolve_uuids(client)
+        await client.start_notify(height_uuid, self._height_notify_callback)
 
     async def stop_notify(self, bleak_client: BleakClient = None) -> None:
         client = bleak_client or self.bleak_client
 
         if (client is None):
             raise Exception("No bleak client provided")
-        
+
+        _, height_uuid = self._resolve_uuids(client)
         try:
-            await client.stop_notify(_desk_height_uuid)
+            await client.stop_notify(height_uuid)
         except BleakDBusError:
             pass
 
@@ -116,16 +147,17 @@ class Desk:
 
         if (client is None):
             raise Exception("No bleak client provided")
-        
+
         self._last_action_time = time.time()
-        await client.write_gatt_char(_desk_control_uuid, _status_uuid, False)
-        self._height = height_conv_to_in(await client.read_gatt_char(_desk_height_uuid))
+        control_uuid, height_uuid = self._resolve_uuids(client)
+        await client.write_gatt_char(control_uuid, _status_uuid, False)
+        self._height = height_conv_to_in(await client.read_gatt_char(height_uuid))
         return self.height
 
     def register_callback(self, callback: callable) -> None:
         self._height_notification_callbacks.append(callback)
 
-    def deregister_callback(self, callable: callable) -> None:
+    def deregister_callback(self, callback: callable) -> None:
         self._height_notification_callbacks.remove(callback)
 
     def __str__(self):
@@ -158,4 +190,5 @@ class Desk:
         if (client is None):
             raise Exception("No bleak client provided")
 
-        await bleak_client.write_gatt_char(_desk_control_uuid, _wake_uuid, False)
+        control_uuid, _ = self._resolve_uuids(client)
+        await client.write_gatt_char(control_uuid, _wake_uuid, False)

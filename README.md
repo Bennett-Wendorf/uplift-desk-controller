@@ -37,6 +37,9 @@
 </p>
 
 
+> [!IMPORTANT]
+> This repository is no longer maintained as it has been superseded by [librick/uplift-ble](https://github.com/librick/uplift-ble). My accompanying Home Assistant integration ([hass-uplift-desk](https://github.com/Bennett-Wendorf/hass-uplift-desk)) has been moved to that library, and anything else using this should move as well.
+
 
 <!-- TABLE OF CONTENTS -->
 <details open="open">
